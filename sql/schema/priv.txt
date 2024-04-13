@@ -1,0 +1,26 @@
+-- +goose Up
+CREATE ROLE user;
+CREATE ROLE admin;
+
+-- +goose Down
+DROP ROLE user;
+DROP ROLE admin;
+
+
+
+
+
+
+-- +goose Up
+
+-- Назначение привелегий
+-- Для пользовательских токенов
+GRANT CONNECT ON DATABASE banners TO user;
+GRANT USAGE ON SCHEMA your_schema TO user;
+GRANT SELECT ON ALL TABLES IN SCHEMA your_schema TO user;
+
+-- Для админских токенов
+GRANT CONNECT ON DATABASE banners TO admin;
+GRANT USAGE ON SCHEMA your_schema TO admin;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA your_schema TO admin;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA your_schema TO admin;
