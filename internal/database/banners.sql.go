@@ -9,62 +9,114 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 const createBanner = `-- name: CreateBanner :one
-INSERT INTO banners (feature, tag, json_content, is_active, created_at, updated_at)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING feature, tag, json_content, is_active, created_at, updated_at
+with create_banner AS (
+  INSERT into banner (feature_id, is_active, "content") VALUES ($2, $3, $4) RETURNING "id", feature_id
+),
+create_banner_relation as (
+  INSERT into banner_relation (banner_id, feature_id, tag_id)
+  SELECT cb.id as banner_id, cb.feature_id as feature_id, UNNEST($1::int[]) as tag_id 
+  FROM create_banner AS cb
+  RETURNING banner_id, feature_id, tag_id
+)
+
+SELECT id, feature_id FROM create_banner
 `
 
 type CreateBannerParams struct {
-	Feature     int32
-	Tag         int32
-	JsonContent json.RawMessage
-	IsActive    bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	Column1   []int32
+	FeatureID int32
+	IsActive  bool
+	Content   json.RawMessage
 }
 
-func (q *Queries) CreateBanner(ctx context.Context, arg CreateBannerParams) (Banner, error) {
+type CreateBannerRow struct {
+	ID        int32
+	FeatureID int32
+}
+
+func (q *Queries) CreateBanner(ctx context.Context, arg CreateBannerParams) (CreateBannerRow, error) {
 	row := q.db.QueryRowContext(ctx, createBanner,
-		arg.Feature,
-		arg.Tag,
-		arg.JsonContent,
+		pq.Array(arg.Column1),
+		arg.FeatureID,
 		arg.IsActive,
-		arg.CreatedAt,
-		arg.UpdatedAt,
+		arg.Content,
 	)
-	var i Banner
-	err := row.Scan(
-		&i.Feature,
-		&i.Tag,
-		&i.JsonContent,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
+	var i CreateBannerRow
+	err := row.Scan(&i.ID, &i.FeatureID)
 	return i, err
 }
 
 const deleteBanner = `-- name: DeleteBanner :one
-DELETE FROM banners
-WHERE feature = $1 AND tag = $2
-RETURNING feature, tag, json_content, is_active, created_at, updated_at
+DELETE from banner 
+WHERE "id" = $1
+RETURNING id, feature_id, is_active, content, created_at, updated_at
 `
 
-type DeleteBannerParams struct {
-	Feature int32
-	Tag     int32
-}
-
-func (q *Queries) DeleteBanner(ctx context.Context, arg DeleteBannerParams) (Banner, error) {
-	row := q.db.QueryRowContext(ctx, deleteBanner, arg.Feature, arg.Tag)
+func (q *Queries) DeleteBanner(ctx context.Context, id int32) (Banner, error) {
+	row := q.db.QueryRowContext(ctx, deleteBanner, id)
 	var i Banner
 	err := row.Scan(
-		&i.Feature,
-		&i.Tag,
-		&i.JsonContent,
+		&i.ID,
+		&i.FeatureID,
+		&i.IsActive,
+		&i.Content,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteTags = `-- name: DeleteTags :exec
+DELETE from banner_relation 
+WHERE banner_id=$1 AND feature_id=$2
+`
+
+type DeleteTagsParams struct {
+	BannerID  int32
+	FeatureID int32
+}
+
+func (q *Queries) DeleteTags(ctx context.Context, arg DeleteTagsParams) error {
+	_, err := q.db.ExecContext(ctx, deleteTags, arg.BannerID, arg.FeatureID)
+	return err
+}
+
+const getBannerByID = `-- name: GetBannerByID :one
+SELECT
+		b.id,
+		b.feature_id,
+		(SELECT ARRAY_AGG(tag_id) FROM banner_relation AS br WHERE br.banner_id = b.id) as tag_ids,
+		b.content,
+		b.is_active,
+		b.created_at,
+		b.updated_at
+FROM banner as b
+WHERE b.id = $1
+`
+
+type GetBannerByIDRow struct {
+	ID        int32
+	FeatureID int32
+	TagIds    interface{}
+	Content   json.RawMessage
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (q *Queries) GetBannerByID(ctx context.Context, id int32) (GetBannerByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getBannerByID, id)
+	var i GetBannerByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.FeatureID,
+		&i.TagIds,
+		&i.Content,
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -72,23 +124,55 @@ func (q *Queries) DeleteBanner(ctx context.Context, arg DeleteBannerParams) (Ban
 	return i, err
 }
 
-const getAllBannersByFeature = `-- name: GetAllBannersByFeature :many
-SELECT feature, tag, json_content, is_active, created_at, updated_at FROM banners WHERE feature = $1
+const getBannerListByFeatureId = `-- name: GetBannerListByFeatureId :many
+SELECT
+	b.id,
+	b.feature_id,
+	CAST (( 
+    SELECT ARRAY_AGG(tag_id::INT) 
+    FROM banner_relation AS br 
+    WHERE br.banner_id = b.id
+  ) AS INTEGER[]) as tag_ids,
+	b.content,
+	b.is_active,
+	b.created_at,
+	b.updated_at
+FROM banner as b
+WHERE b.feature_id = $1
+ORDER BY b.created_at DESC
+LIMIT $2 OFFSET $3
 `
 
-func (q *Queries) GetAllBannersByFeature(ctx context.Context, feature int32) ([]Banner, error) {
-	rows, err := q.db.QueryContext(ctx, getAllBannersByFeature, feature)
+type GetBannerListByFeatureIdParams struct {
+	FeatureID int32
+	Limit     int32
+	Offset    int32
+}
+
+type GetBannerListByFeatureIdRow struct {
+	ID        int32
+	FeatureID int32
+	TagIds    []int32
+	Content   json.RawMessage
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (q *Queries) GetBannerListByFeatureId(ctx context.Context, arg GetBannerListByFeatureIdParams) ([]GetBannerListByFeatureIdRow, error) {
+	rows, err := q.db.QueryContext(ctx, getBannerListByFeatureId, arg.FeatureID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Banner
+	var items []GetBannerListByFeatureIdRow
 	for rows.Next() {
-		var i Banner
+		var i GetBannerListByFeatureIdRow
 		if err := rows.Scan(
-			&i.Feature,
-			&i.Tag,
-			&i.JsonContent,
+			&i.ID,
+			&i.FeatureID,
+			pq.Array(&i.TagIds),
+			&i.Content,
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -106,23 +190,54 @@ func (q *Queries) GetAllBannersByFeature(ctx context.Context, feature int32) ([]
 	return items, nil
 }
 
-const getAllBannersByTag = `-- name: GetAllBannersByTag :many
-SELECT feature, tag, json_content, is_active, created_at, updated_at FROM banners WHERE tag = $1
+const getBannerListByTag = `-- name: GetBannerListByTag :many
+SELECT 	
+  b.id,
+	b.feature_id,
+	CAST (( 
+    SELECT ARRAY_AGG(tag_id::INT) 
+    FROM banner_relation AS br 
+    WHERE br.banner_id = b.id AND br.tag_id = $1
+  ) AS INTEGER[]) as tag_ids,
+	b.content,
+	b.is_active,
+	b.created_at,
+	b.updated_at
+FROM banner as b
+ORDER BY b.created_at DESC
+LIMIT $2 OFFSET $3
 `
 
-func (q *Queries) GetAllBannersByTag(ctx context.Context, tag int32) ([]Banner, error) {
-	rows, err := q.db.QueryContext(ctx, getAllBannersByTag, tag)
+type GetBannerListByTagParams struct {
+	TagID  int32
+	Limit  int32
+	Offset int32
+}
+
+type GetBannerListByTagRow struct {
+	ID        int32
+	FeatureID int32
+	TagIds    []int32
+	Content   json.RawMessage
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (q *Queries) GetBannerListByTag(ctx context.Context, arg GetBannerListByTagParams) ([]GetBannerListByTagRow, error) {
+	rows, err := q.db.QueryContext(ctx, getBannerListByTag, arg.TagID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Banner
+	var items []GetBannerListByTagRow
 	for rows.Next() {
-		var i Banner
+		var i GetBannerListByTagRow
 		if err := rows.Scan(
-			&i.Feature,
-			&i.Tag,
-			&i.JsonContent,
+			&i.ID,
+			&i.FeatureID,
+			pq.Array(&i.TagIds),
+			&i.Content,
 			&i.IsActive,
 			&i.CreatedAt,
 			&i.UpdatedAt,
@@ -141,21 +256,46 @@ func (q *Queries) GetAllBannersByTag(ctx context.Context, tag int32) ([]Banner, 
 }
 
 const getUserBanner = `-- name: GetUserBanner :one
-SELECT feature, tag, json_content, is_active, created_at, updated_at FROM banners WHERE feature = $1 AND tag = $2
+with find_banner as (
+  SELECT banner_id, banner_relation.tag_id, banner_relation.feature_id 
+  FROM banner_relation 
+  WHERE banner_relation.feature_id=$2 AND banner_relation.tag_id=$1
+)
+
+SELECT
+  b.id,
+  b.feature_id,
+  (SELECT ARRAY_AGG(tag_id) FROM banner_relation AS br WHERE br.banner_id = b.id) as tag_ids,
+  b.content,
+  b.is_active,
+  b.created_at,
+  b.updated_at
+FROM banner as b JOIN find_banner as fb ON (b.id = fb.banner_id)
 `
 
 type GetUserBannerParams struct {
-	Feature int32
-	Tag     int32
+	TagID     int32
+	FeatureID int32
 }
 
-func (q *Queries) GetUserBanner(ctx context.Context, arg GetUserBannerParams) (Banner, error) {
-	row := q.db.QueryRowContext(ctx, getUserBanner, arg.Feature, arg.Tag)
-	var i Banner
+type GetUserBannerRow struct {
+	ID        int32
+	FeatureID int32
+	TagIds    interface{}
+	Content   json.RawMessage
+	IsActive  bool
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+func (q *Queries) GetUserBanner(ctx context.Context, arg GetUserBannerParams) (GetUserBannerRow, error) {
+	row := q.db.QueryRowContext(ctx, getUserBanner, arg.TagID, arg.FeatureID)
+	var i GetUserBannerRow
 	err := row.Scan(
-		&i.Feature,
-		&i.Tag,
-		&i.JsonContent,
+		&i.ID,
+		&i.FeatureID,
+		&i.TagIds,
+		&i.Content,
 		&i.IsActive,
 		&i.CreatedAt,
 		&i.UpdatedAt,
@@ -163,29 +303,41 @@ func (q *Queries) GetUserBanner(ctx context.Context, arg GetUserBannerParams) (B
 	return i, err
 }
 
-const updateBanner = `-- name: UpdateBanner :one
-UPDATE banners
-SET json_content = $1, is_active = $2, updated_at = NOW()
-WHERE feature = $3 AND tag = $3
-RETURNING feature, tag, json_content, is_active, created_at, updated_at
+const insertTags = `-- name: InsertTags :exec
+INSERT INTO banner_relation (banner_id, feature_id, tag_id) 
+SELECT $1, $2, UNNEST($3::int[])
+`
+
+type InsertTagsParams struct {
+	BannerID  int32
+	FeatureID int32
+	Column3   []int32
+}
+
+func (q *Queries) InsertTags(ctx context.Context, arg InsertTagsParams) error {
+	_, err := q.db.ExecContext(ctx, insertTags, arg.BannerID, arg.FeatureID, pq.Array(arg.Column3))
+	return err
+}
+
+const updateBanner = `-- name: UpdateBanner :exec
+UPDATE banner 
+SET feature_id=$2, is_active=$3, content=$4, updated_at=CURRENT_TIMESTAMP
+WHERE id=$1
 `
 
 type UpdateBannerParams struct {
-	JsonContent json.RawMessage
-	IsActive    bool
-	Feature     int32
+	ID        int32
+	FeatureID int32
+	IsActive  bool
+	Content   json.RawMessage
 }
 
-func (q *Queries) UpdateBanner(ctx context.Context, arg UpdateBannerParams) (Banner, error) {
-	row := q.db.QueryRowContext(ctx, updateBanner, arg.JsonContent, arg.IsActive, arg.Feature)
-	var i Banner
-	err := row.Scan(
-		&i.Feature,
-		&i.Tag,
-		&i.JsonContent,
-		&i.IsActive,
-		&i.CreatedAt,
-		&i.UpdatedAt,
+func (q *Queries) UpdateBanner(ctx context.Context, arg UpdateBannerParams) error {
+	_, err := q.db.ExecContext(ctx, updateBanner,
+		arg.ID,
+		arg.FeatureID,
+		arg.IsActive,
+		arg.Content,
 	)
-	return i, err
+	return err
 }

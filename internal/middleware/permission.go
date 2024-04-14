@@ -3,7 +3,6 @@ package middleware
 import (
 	"encoding/json"
 
-	//"github.com/9Neechan/AvitoTech-2024/internal/database"
 	"github.com/9Neechan/AvitoTech-2024/internal/models"
 	"github.com/gin-gonic/gin"
 
@@ -46,7 +45,6 @@ func OnlyAdmin() gin.HandlerFunc {
 
 		if !user.IsAdmin {
 			c.AbortWithStatus(http.StatusForbidden)
-			//c.Writer.WriteHeader(http.StatusForbidden)
 		} 
 		c.Next()
 

@@ -10,10 +10,16 @@ import (
 )
 
 type Banner struct {
-	Feature     int32
-	Tag         int32
-	JsonContent json.RawMessage
-	IsActive    bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID        int32
+	FeatureID int32
+	IsActive  bool
+	Content   json.RawMessage
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+type BannerRelation struct {
+	BannerID  int32
+	FeatureID int32
+	TagID     int32
 }

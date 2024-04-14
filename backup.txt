@@ -1,0 +1,43 @@
+
+
+	/*// update featureID
+	if params.FeatureID != banner.FeatureID {
+		psql.DB.UpdateFeatureID(c, database.UpdateFeatureIDParams{
+			BannerID:  banner.ID,
+			FeatureID: params.FeatureID,
+		})
+	}
+
+	// update activity
+	if params.IsActive != banner.IsActive {
+		psql.DB.UpdateActivity(c, database.UpdateActivityParams{
+			ID: banner.ID,
+			IsActive: params.IsActive,
+		})
+	}
+
+	// update content
+	if params.Content != nil {
+		psql.DB.UpdateContent(c, database.UpdateContentParams{
+			ID: banner.ID,
+			Content: params.Content,
+		})
+	}*/
+
+
+
+
+-- name: UpdateFeatureID :exec
+UPDATE banner_relation 
+SET feature_id=$2, updated_at=CURRENT_TIMESTAMP
+WHERE banner_id=$1;
+
+-- name: UpdateActivity :exec
+UPDATE banner 
+SET is_active=$2, updated_at=CURRENT_TIMESTAMP
+WHERE id=$1;
+
+-- name: UpdateContent :exec
+UPDATE banner 
+SET content=$2, updated_at=CURRENT_TIMESTAMP
+WHERE id=$1;
