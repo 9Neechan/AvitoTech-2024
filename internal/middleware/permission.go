@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"encoding/json"
-	"github.com/9Neechan/AvitoTech-2024/internal/database"
+
+	//"github.com/9Neechan/AvitoTech-2024/internal/database"
+	"github.com/9Neechan/AvitoTech-2024/internal/models"
 	"github.com/gin-gonic/gin"
 
 	"net/http"
@@ -36,16 +38,17 @@ func SendErrorMsg(c *gin.Context, status int, msg string) {
 
 func OnlyAdmin() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		user, ok := c.Value(UserKey).(database.User)
+		user, ok := c.Value(UserKey).(models.User)
 		if !ok {
 			SendErrorMsg(c, http.StatusInternalServerError, "user not found in context")
 			return
 		}
 
 		if !user.IsAdmin {
-			c.Writer.WriteHeader(http.StatusForbidden)
-		}
-
+			c.AbortWithStatus(http.StatusForbidden)
+			//c.Writer.WriteHeader(http.StatusForbidden)
+		} 
 		c.Next()
+
 	}
 }

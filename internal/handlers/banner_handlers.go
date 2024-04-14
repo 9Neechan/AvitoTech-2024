@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	//"fmt"
 	"net/http"
 	"time"
 
@@ -51,6 +50,7 @@ func CreateBannerHander(c *gin.Context) {
 }
 
 func GetBannerForUserHandler(c *gin.Context) {
+	
 	
 }
 

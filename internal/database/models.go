@@ -7,8 +7,6 @@ package database
 import (
 	"encoding/json"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type Banner struct {
@@ -18,11 +16,4 @@ type Banner struct {
 	IsActive    bool
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
-}
-
-type User struct {
-	ID        uuid.UUID
-	IsAdmin   bool
-	CreatedAt time.Time
-	UpdatedAt time.Time
 }

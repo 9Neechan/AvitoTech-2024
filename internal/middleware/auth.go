@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"net/http"
-	"context"
+	//"context"
 
 	usermodels "github.com/9Neechan/AvitoTech-2024/internal/models"
 
@@ -11,15 +11,17 @@ import (
 
 const headerTokenName = "token"
 
-type userKeyT string
+//type userKeyT string
+//const UserKey userKeyT = "user key"
 
-const UserKey userKeyT = "user key"
+const UserKey string = "user key"
 
-func AuthMiddleware(userToken string, adminToken string, next *gin.Engine) gin.HandlerFunc {
+func AuthMiddleware(userToken string, adminToken string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var user usermodels.User
 
-		token := c.Request.Header.Get(headerTokenName)
+		token := c.GetHeader(headerTokenName)
+		//token := c.Request.Header.Get(headerTokenName)
 		switch token {
 		case userToken:
 			user = usermodels.User{IsAdmin: false}
@@ -30,10 +32,10 @@ func AuthMiddleware(userToken string, adminToken string, next *gin.Engine) gin.H
 			return
 		}
 
-		//c.Set(UserKey, user)
-		ctx := context.WithValue(c, UserKey, user)
+		//ctx := context.WithValue(c, UserKey, user)
+		//next.ServeHTTP(c.Writer, c.Request.WithContext(ctx))
 
-		//c.Next()
-		next.ServeHTTP(c.Writer, c.Request.WithContext(ctx))
+		c.Set(UserKey, user)
+		c.Next()
 	}
 }
